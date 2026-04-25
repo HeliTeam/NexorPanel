@@ -73,15 +73,38 @@ run_spinner() {
 }
 
 # dpkg часто занят автообновлением (unattended-upgrades) сразу после первого входа
+# При set -e нельзя «pgrep … && return 0» — сбой pgrep (1) роняет весь скрипт.
+# Проверка flock на lock-frontend совпадает с dpkg, надёжнее, чем только fuser.
 dpkg_lock_busy() {
-  if command -v fuser >/dev/null 2>&1; then
-    fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && return 0
-    fuser /var/lib/dpkg/lock >/dev/null 2>&1 && return 0
+  if [[ -e /var/lib/dpkg/lock-frontend ]] && command -v flock >/dev/null 2>&1; then
+    if ! flock -n /var/lib/dpkg/lock-frontend -c "true" 2>/dev/null; then
+      return 0
+    fi
+    return 1
   fi
-  pgrep -x apt-get >/dev/null 2>&1 && return 0
-  pgrep -x apt >/dev/null 2>&1 && return 0
-  pgrep -x dpkg >/dev/null 2>&1 && return 0
-  pgrep -f unattended-upgrade >/dev/null 2>&1 && return 0
+  if command -v fuser >/dev/null 2>&1; then
+    if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+      return 0
+    fi
+    if fuser /var/lib/dpkg/lock >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+  if pgrep -x apt-get >/dev/null 2>&1; then
+    return 0
+  fi
+  if pgrep -x apt >/dev/null 2>&1; then
+    return 0
+  fi
+  if pgrep -x dpkg >/dev/null 2>&1; then
+    return 0
+  fi
+  if pgrep -f unattended-upgrade >/dev/null 2>&1; then
+    return 0
+  fi
+  if pgrep -x packagekitd >/dev/null 2>&1; then
+    return 0
+  fi
   return 1
 }
 
@@ -124,8 +147,13 @@ INSTALL_LOG="/tmp/nexor-install.log"
 
 echo ""
 echo -e "${B}Доступ к панели с интернета${Z}"
-echo -e "  ${G}1${Z} — есть домен → HTTPS через Let's Encrypt (нужен DNS на этот сервер, порт 80)."
-echo -e "  ${G}2${Z} — только IP → HTTPS с самоподписанным сертификатом (браузер предупредит — это нормально)."
+if [[ -t 1 ]]; then
+  echo -e "  ${G}1${Z} — есть домен → HTTPS через Let's Encrypt (нужен DNS на этот сервер, порт 80)."
+  echo -e "  ${G}2${Z} — только IP → HTTPS с самоподписанным сертификатом (браузер предупредит — это нормально)."
+else
+  echo "  1 — есть домен (HTTPS, Let's Encrypt, порт 80)."
+  echo "  2 — только IP (HTTPS, самоподписанный сертификат)."
+fi
 read -r -p "Выберите 1 или 2: " MODE
 [[ "$MODE" == "1" || "$MODE" == "2" ]] || die "Введите 1 или 2"
 
