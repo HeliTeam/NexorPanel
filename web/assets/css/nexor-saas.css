@@ -130,3 +130,51 @@ body.dark a {
 .nexor-login-logo-row {
   margin-bottom: 0.75rem;
 }
+
+/* Страница /sub/… (subscription): одна тёмная тема без «светлой» ant primary */
+body.dark .subscription-page.ant-layout {
+  background: var(--nexor-bg) !important;
+  min-height: 100vh;
+}
+
+body.dark .subscription-page .ant-card {
+  background: var(--nexor-surface) !important;
+  border-color: var(--nexor-border) !important;
+}
+
+body.dark .subscription-page .ant-card-head {
+  border-bottom-color: var(--nexor-border) !important;
+  color: var(--nexor-text) !important;
+}
+
+body.dark .subscription-page .ant-btn-primary,
+body.dark .subscription-page .ant-btn-primary.ant-btn {
+  background: #0f766e !important;
+  border-color: #0f766e !important;
+  color: #ecfeff !important;
+}
+
+body.dark .subscription-page .ant-btn-primary:hover,
+body.dark .subscription-page .ant-btn-primary:focus,
+body.dark .subscription-page .ant-btn-primary.ant-btn:hover,
+body.dark .subscription-page .ant-btn-primary.ant-btn:focus {
+  background: #14b8a6 !important;
+  border-color: #14b8a6 !important;
+  color: #f0fdfa !important;
+}
+
+body.dark .subscription-page .ant-descriptions-bordered .ant-descriptions-item-label,
+body.dark .subscription-page .ant-descriptions-bordered .ant-descriptions-item-content {
+  background: var(--nexor-surface) !important;
+  border-color: var(--nexor-border) !important;
+  color: var(--nexor-text) !important;
+}
+
+body.dark .subscription-page .ant-descriptions-item-label {
+  color: var(--nexor-muted) !important;
+}
+
+body.dark .subscription-page .nexor-brand-logo--inline {
+  filter: none;
+  opacity: 0.95;
+}

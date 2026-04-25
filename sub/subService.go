@@ -1293,28 +1293,85 @@ func (s *SubService) BuildURLs(scheme, hostWithPort, subPath, subJsonPath, subCl
 	return subURL, subJsonURL, subClashURL
 }
 
-// getBaseSchemeAndHost determines the base scheme and host from settings or falls back to request values
+// getBaseSchemeAndHost determines the base scheme and host from settings or falls back to request values.
+// When TLS terminates at nginx (443) and the sub port (e.g. 2096) is only internal, the request is often
+// HTTPS with X-Forwarded-Proto; we then advertise https://domain/sub/... without :2096.
+// When the sub service has its own cert/key, we use https://domain:subPort.
 func (s *SubService) getBaseSchemeAndHost(requestScheme, requestHostWithPort string) (string, string) {
 	subDomain, err := s.settingService.GetSubDomain()
 	if err != nil || subDomain == "" {
 		return requestScheme, requestHostWithPort
 	}
 
-	// Get port and TLS settings
 	subPort, _ := s.settingService.GetSubPort()
 	subKeyFile, _ := s.settingService.GetSubKeyFile()
 	subCertFile, _ := s.settingService.GetSubCertFile()
+	webCertFile, _ := s.settingService.GetCertFile()
+	webKeyFile, _ := s.settingService.GetKeyFile()
 
-	// Determine scheme from TLS configuration
-	scheme := "http"
+	// Sub endpoint serves TLS by itself
 	if subKeyFile != "" && subCertFile != "" {
-		scheme = "https"
+		return "https", fmt.Sprintf("%s:%d", subDomain, subPort)
 	}
 
-	// Build host:port, always include port for clarity
-	hostWithPort := fmt.Sprintf("%s:%d", subDomain, subPort)
+	// User reached this page over HTTPS (e.g. nginx + Let's Encrypt) — use same public host, drop :443
+	if strings.EqualFold(requestScheme, "https") {
+		return "https", subPubHostHTTPS(requestHostWithPort, subDomain)
+	}
 
-	return scheme, hostWithPort
+	// Panel is configured with web TLS: prefer public https://subDomain (reverse proxy on 443)
+	if webCertFile != "" && webKeyFile != "" {
+		return "https", subDomain
+	}
+
+	return "http", fmt.Sprintf("%s:%d", subDomain, subPort)
+}
+
+// subPubHostHTTPS returns host[:port] suitable for an https: URL. Strips default 443; if the request
+// targeted an IP, falls back to subDomain from settings.
+func subPubHostHTTPS(requestHostWithPort, subDomain string) string {
+	h := stripDefaultPortForScheme("https", requestHostWithPort)
+	host, port, err := net.SplitHostPort(h)
+	if err != nil {
+		host = h
+		port = ""
+	}
+	if host != "" && net.ParseIP(host) != nil {
+		if subDomain != "" {
+			if port != "" && port != "443" {
+				return net.JoinHostPort(subDomain, port)
+			}
+			return subDomain
+		}
+		return h
+	}
+	if subDomain != "" && strings.EqualFold(host, subDomain) {
+		if port != "" && port != "443" {
+			return net.JoinHostPort(subDomain, port)
+		}
+		return subDomain
+	}
+	if host == "" {
+		return subDomain
+	}
+	return h
+}
+
+func stripDefaultPortForScheme(scheme, hostWithPort string) string {
+	if !strings.Contains(hostWithPort, ":") {
+		return hostWithPort
+	}
+	host, port, err := net.SplitHostPort(hostWithPort)
+	if err != nil {
+		return hostWithPort
+	}
+	if strings.EqualFold(scheme, "https") && port == "443" {
+		return host
+	}
+	if strings.EqualFold(scheme, "http") && port == "80" {
+		return host
+	}
+	return hostWithPort
 }
 
 // buildSingleURL constructs a single URL using configured URI or base components
