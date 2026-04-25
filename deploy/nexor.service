@@ -1,0 +1,17 @@
+[Unit]
+Description=Nexor VPN Panel (Xray management)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/usr/local/nexor
+ExecStart=/usr/local/nexor/nexor
+Restart=always
+RestartSec=3
+Environment=NEXOR_DB_FOLDER=/etc/nexor
+Environment=NEXOR_LOG_FOLDER=/var/log/nexor
+# Environment=NEXOR_DATABASE_URL=postgres://nexor:secret@127.0.0.1:5432/nexor?sslmode=disable
+
+[Install]
+WantedBy=multi-user.target

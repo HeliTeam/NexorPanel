@@ -1,0 +1,62 @@
+/* Nexor monochrome SaaS accents (overrides Ant Design Vue tokens where applicable) */
+:root {
+  --nexor-bg: #f4f4f5;
+  --nexor-surface: #ffffff;
+  --nexor-text: #18181b;
+  --nexor-muted: #71717a;
+  --nexor-border: #e4e4e7;
+  --nexor-accent: #27272a;
+  --nexor-accent-hover: #3f3f46;
+}
+
+body {
+  background-color: var(--nexor-bg) !important;
+  color: var(--nexor-text);
+}
+
+.ant-layout,
+.ant-layout-sider,
+.ant-card {
+  background: var(--nexor-surface) !important;
+}
+
+.ant-menu-dark,
+.ant-layout-sider-dark {
+  background: #18181b !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background-color: var(--nexor-accent) !important;
+}
+
+.ant-btn-primary {
+  background: var(--nexor-accent) !important;
+  border-color: var(--nexor-accent) !important;
+}
+
+.ant-btn-primary:hover,
+.ant-btn-primary:focus {
+  background: var(--nexor-accent-hover) !important;
+  border-color: var(--nexor-accent-hover) !important;
+}
+
+.ant-table-thead > tr > th {
+  background: #fafafa !important;
+  color: var(--nexor-text) !important;
+}
+
+.nexor-brand-logo {
+  display: block;
+  border-radius: 14px;
+  object-fit: contain;
+}
+
+.nexor-brand-logo--inline {
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 8px;
+}
+
+.nexor-login-logo-row {
+  margin-bottom: 0.75rem;
+}
