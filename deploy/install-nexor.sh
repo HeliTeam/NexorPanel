@@ -220,6 +220,36 @@ run_with_build_heartbeat() {
   wait "$pid"
 }
 
+# Certbot принимает только ACE (Punycode) или чистый ASCII — иначе «Non-ASCII domain names»
+normalize_le_domain() {
+  local h="$1"
+  h="${h//$'\r'/}"
+  h="${h//$'\n'/}"
+  h="$(printf %s "$h" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  [[ -n "$h" ]] || die "Домен пустой"
+  if [[ "$h" == *..* ]] || [[ "$h" == .* ]] || [[ "$h" == *. ]]; then
+    die "Некорректный домен: $h"
+  fi
+  if printf %s "$h" | LC_ALL=C grep -qE '[^a-zA-Z0-9.-]'; then
+    command -v idn2 >/dev/null 2>&1 || die "В домене не-ASCII (часто перепутана раскладка). Введите латиницей, например xray.helitop.ru, или дождитесь установки idn2 и перезапустите."
+    h="$(idn2 -q "$h" 2>/dev/null)" || die "Некорректное имя / IDN: $1"
+  else
+    h="$(printf %s "$h" | tr '[:upper:]' '[:lower:]')"
+  fi
+  printf '%s' "$h"
+}
+
+sanitize_cert_email() {
+  local e="$1"
+  e="${e//$'\r'/}"
+  e="$(printf %s "$e" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  [[ -n "$e" ]] || die "Email пустой"
+  if printf %s "$e" | LC_ALL=C grep -qE '[^a-zA-Z0-9@._%+-]'; then
+    die "Email для Let's Encrypt: только ASCII (латиница, цифры, @ . _ % + -)."
+  fi
+  printf '%s' "$e"
+}
+
 [[ "$(id -u)" -eq 0 ]] || die "Запустите от root: sudo bash $0"
 
 echo -e "${B}"
@@ -252,6 +282,7 @@ if [[ "$MODE" == "1" ]]; then
   [[ -n "$DOMAIN" ]] || die "Домен не может быть пустым"
   read -r -p "Email для Let's Encrypt: " CERT_EMAIL
   [[ -n "$CERT_EMAIL" ]] || die "Email нужен для certbot"
+  CERT_EMAIL="$(sanitize_cert_email "$CERT_EMAIL")"
 else
   read -r -p "Публичный IP (Enter — авто): " SERVER_IP
   SERVER_IP="${SERVER_IP// /}"
@@ -276,7 +307,7 @@ phase "Системные пакеты" \
 wait_for_dpkg_lock
 
 APT_PKGS="git curl ca-certificates openssl build-essential pkg-config libsqlite3-dev nginx"
-[[ "$MODE" == "1" ]] && APT_PKGS="$APT_PKGS certbot python3-certbot-nginx"
+[[ "$MODE" == "1" ]] && APT_PKGS="$APT_PKGS certbot python3-certbot-nginx idn2"
 
 run_apt_install() {
   {
@@ -423,6 +454,7 @@ phase "Nginx как обратный прокси" \
   "Снаружи только 80/443. Панель слушает localhost:2053, подписка :2096 — nginx передаёт трафик внутрь."
 
 if [[ "$MODE" == "1" ]]; then
+  DOMAIN="$(normalize_le_domain "$DOMAIN")"
   cat >"$NGINX_SITE" <<EOF
 upstream nexor_panel {
     server 127.0.0.1:${PANEL_PORT};
@@ -515,9 +547,12 @@ if [[ "$MODE" == "1" ]]; then
   phase "Сертификат Let's Encrypt" \
     "Certbot проверит домен через порт 80 и включит HTTPS. Убедитесь, что DNS уже указывает на этот сервер."
 
-  certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERT_EMAIL" --redirect >>"$INSTALL_LOG" 2>&1 || {
-    tail -25 "$INSTALL_LOG"
-    die "Certbot не выдал сертификат (DNS, файрвол 80, см. $INSTALL_LOG)"
+  CERTBOT_LOG="/tmp/nexor-certbot.log"
+  : >"$CERTBOT_LOG"
+  certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERT_EMAIL" --redirect >>"$CERTBOT_LOG" 2>&1 || {
+    echo -e "${R}Certbot (отдельный лог, не /tmp/nexor-install.log):${Z}"
+    tail -50 "$CERTBOT_LOG"
+    die "Let's Encrypt: см. $CERTBOT_LOG. Проверьте DNS A/AAAA → этот IP, порт 80, домен латиницей (без невидимых символов)."
   }
   echo -e "  ${G}Готово.${Z} TLS активен."
 fi
