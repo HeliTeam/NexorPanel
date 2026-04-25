@@ -152,18 +152,27 @@ go_apply_host_tuning() {
   fi
 }
 
-# Долгий go build: тихий лог + строки ожидания, чтобы не казалось «зависло»
+# Долгий go build: лог + «пульс» с последней строкой go build -v (видно, какой пакет собирается)
 run_with_build_heartbeat() {
-  local title="$1" logf="$2" t0 now
+  local title="$1" logf="$2" t0 now last
   shift 2
   t0=$(date +%s)
-  echo -e "  ${D}→ $title (подробности: tail -f $logf)${Z}"
+  echo -e "  ${D}→ $title — в лог пишутся пакеты (-v). Раз в 30 с ниже — последняя строка; полный поток: tail -f $logf${Z}"
   "$@" >>"$logf" 2>&1 &
   local pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     sleep 30
     now=$(date +%s)
-    echo -e "  ${D}... ещё компиляция — $(( (now - t0) / 60 )) мин $(( (now - t0) % 60 )) с. 1 vCPU/1 ГБ: первая сборка часто 5–20 мин, это норма.${Z}"
+    last=""
+    [[ -s "$logf" ]] && last="$(tail -n 1 "$logf" 2>/dev/null | tr -d '\r' | sed 's/^[[:space:]]*//')"
+    if [[ -n "$last" ]]; then
+      if ((${#last} > 100)); then
+        last="${last:0:97}..."
+      fi
+      echo -e "  ${D}... $(( (now - t0) / 60 ))m $(( (now - t0) % 60 ))s — ${last}${Z}"
+    else
+      echo -e "  ${D}... $(( (now - t0) / 60 )) мин, ждём вывода компилятора (1 vCPU/1 ГБ: до ~30 мин — норма)${Z}"
+    fi
   done
   wait "$pid"
 }
@@ -303,7 +312,7 @@ command -v go >/dev/null || die "Go не найден"
 go version | sed 's/^/  /'
 
 phase "Сборка бинарника nexor" \
-  "go mod tidy, затем go build. На 1 vCPU/1 ГБ заложите 5–20 мин; прогресс в консоли + tail -f лога (см. подсказку при сборке)."
+  "go mod tidy, затем go build -v. На 1 vCPU/1 ГБ часто 10–30 мин — смотрите строки с именами пакетов ниже или tail -f лога."
 
 cd "$INSTALL_SRC"
 export CGO_ENABLED=1
@@ -323,8 +332,8 @@ run_spinner "go mod tidy…" bash -c "go mod tidy >>'$INSTALL_LOG' 2>&1" || {
   die "Полный лог: $INSTALL_LOG"
 }
 
-# -trimpath / -buildvcs=false — меньше лишнего; на слабом хосте -p 1 (ниже пик ОЗУ)
-GB=(go build -trimpath -buildvcs=false -ldflags "-s -w" -o nexor)
+# -v — в лог идут имена пакетов (удобно на слабом VPS); -trimpath / -buildvcs=false; на слабом хосте -p 1
+GB=(go build -v -trimpath -buildvcs=false -ldflags "-s -w" -o nexor)
 [[ -n "${NEXOR_GO_P:-}" ]] && GB+=(-p 1)
 GB+=(.)
 GB_TITLE="go build"
