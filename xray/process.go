@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -69,9 +70,13 @@ func GetAccessPersistentPrevLogPath() string {
 }
 
 // GetAccessLogPath reads the Xray config and returns the access log file path.
+// Если config.json ещё не создан (Xray ни разу не запускали), возвращаем "none" без ошибки — иначе падает GetDefaultSettings / дашборд.
 func GetAccessLogPath() (string, error) {
 	config, err := os.ReadFile(GetConfigPath())
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "none", nil
+		}
 		logger.Warningf("Failed to read configuration file: %s", err)
 		return "", err
 	}
@@ -84,13 +89,13 @@ func GetAccessLogPath() (string, error) {
 	}
 
 	if jsonConfig["log"] != nil {
-		jsonLog := jsonConfig["log"].(map[string]any)
-		if jsonLog["access"] != nil {
-			accessLogPath := jsonLog["access"].(string)
+		jsonLog, ok := jsonConfig["log"].(map[string]any)
+		if ok && jsonLog["access"] != nil {
+			accessLogPath, _ := jsonLog["access"].(string)
 			return accessLogPath, nil
 		}
 	}
-	return "", err
+	return "none", nil
 }
 
 // stopProcess calls Stop on the given Process instance.
@@ -252,6 +257,9 @@ func (p *process) Start() (err error) {
 	err = os.MkdirAll(config.GetLogFolder(), 0o770)
 	if err != nil {
 		logger.Warningf("Failed to create log folder: %s", err)
+	}
+	if err = os.MkdirAll(filepath.Clean(config.GetBinFolderPath()), 0o755); err != nil {
+		return common.NewErrorf("Failed to create Xray bin folder: %v", err)
 	}
 
 	configPath := GetConfigPath()

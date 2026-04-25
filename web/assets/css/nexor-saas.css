@@ -1,4 +1,5 @@
-/* Nexor monochrome SaaS accents (overrides Ant Design Vue tokens where applicable) */
+/* Nexor — светлая и тёмная тема согласованы с body.dark / Ant Design Vue */
+
 :root {
   --nexor-bg: #f4f4f5;
   --nexor-surface: #ffffff;
@@ -7,6 +8,27 @@
   --nexor-border: #e4e4e7;
   --nexor-accent: #27272a;
   --nexor-accent-hover: #3f3f46;
+  --nexor-table-head: #fafafa;
+}
+
+/* Тёмная тема (переключатель в сайдбаре) */
+body.dark {
+  --nexor-bg: #09090b;
+  --nexor-surface: #18181b;
+  --nexor-text: #fafafa;
+  --nexor-muted: #a1a1aa;
+  --nexor-border: #27272a;
+  --nexor-accent: #e4e4e7;
+  --nexor-accent-hover: #f4f4f5;
+  --nexor-table-head: #27272a;
+}
+
+html[data-theme="ultra-dark"] body.dark {
+  --nexor-bg: #020203;
+  --nexor-surface: #0f0f12;
+  --nexor-text: #f4f4f5;
+  --nexor-border: #1f1f23;
+  --nexor-table-head: #1a1a1f;
 }
 
 body {
@@ -14,24 +36,56 @@ body {
   color: var(--nexor-text);
 }
 
-.ant-layout,
-.ant-layout-sider,
-.ant-card {
+body.dark .index-page.ant-layout,
+body.dark #app.ant-layout {
+  background: var(--nexor-bg) !important;
+}
+
+/* Не перекрашиваем корневой layout в белый там, где Ant ожидает тёмный сайдбар */
+body.dark .ant-layout-sider-dark {
+  background: #141414 !important;
+}
+
+body.dark .ant-menu-dark {
+  background: transparent !important;
+}
+
+/* Основная область (не сайдбар): id из index.html */
+body.dark #content-layout,
+body.dark #content-layout.ant-layout {
+  background: var(--nexor-surface) !important;
+  min-height: 100vh;
+}
+
+body.dark .ant-layout-content {
+  background: var(--nexor-surface) !important;
+  color: var(--nexor-text) !important;
+}
+
+/* Светлая тема: контент как раньше */
+body:not(.dark) #content-layout,
+body:not(.dark) #content-layout.ant-layout {
   background: var(--nexor-surface) !important;
 }
 
-.ant-menu-dark,
-.ant-layout-sider-dark {
-  background: #18181b !important;
+.ant-card {
+  background: var(--nexor-surface) !important;
+  color: var(--nexor-text);
+  border-color: var(--nexor-border) !important;
 }
 
-.ant-menu-dark .ant-menu-item-selected {
-  background-color: var(--nexor-accent) !important;
+body.dark .ant-card {
+  background: var(--nexor-surface) !important;
 }
 
 .ant-btn-primary {
   background: var(--nexor-accent) !important;
   border-color: var(--nexor-accent) !important;
+  color: #ffffff !important;
+}
+
+body.dark .ant-btn-primary {
+  color: #18181b !important;
 }
 
 .ant-btn-primary:hover,
@@ -41,8 +95,24 @@ body {
 }
 
 .ant-table-thead > tr > th {
-  background: #fafafa !important;
+  background: var(--nexor-table-head) !important;
   color: var(--nexor-text) !important;
+}
+
+body.dark .ant-table,
+body.dark .ant-table-body,
+body.dark .ant-table-content {
+  background: var(--nexor-surface) !important;
+  color: var(--nexor-text) !important;
+}
+
+body.dark .ant-empty-description,
+body.dark .ant-typography {
+  color: var(--nexor-muted) !important;
+}
+
+body.dark a {
+  color: #86efac;
 }
 
 .nexor-brand-logo {
