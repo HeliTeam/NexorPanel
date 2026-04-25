@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="Nexor" src="./media/logo_nexor.png" width="160" height="160">
+  <img alt="Nexor" src="./web/assets/logo_nexor.svg" width="160" height="160">
 </p>
 
 # Nexor VPN Panel
