@@ -145,11 +145,54 @@ go_apply_host_tuning() {
     fi
     NEXOR_GO_P=1
   fi
-  if (( mem_kb < 1600000 )); then
+  if (( mem_kb < 1200000 )); then
     if [[ -z "${GOGC:-}" ]]; then
-      export GOGC=45
+      export GOGC=20
+    fi
+  elif (( mem_kb < 2560000 )); then
+    if [[ -z "${GOGC:-}" ]]; then
+      export GOGC=30
     fi
   fi
+}
+
+# Без swap на 1 ГБ ОЗУ go build часто умирает: compile: signal: killed (OOM)
+ensure_swap_for_go_build() {
+  local mem_kb swap_kb avail_m swapfile=/var/swap.nexor
+  mem_kb=0
+  swap_kb=0
+  [[ -r /proc/meminfo ]] && mem_kb="$(awk '/^MemTotal:/{print $2; exit}' /proc/meminfo)"
+  [[ -r /proc/meminfo ]] && swap_kb="$(awk '/^SwapTotal:/{print $2; exit}' /proc/meminfo)"
+  # >= ~4 ГиБ ОЗУ — go build обычно укладывается без доп. swap-файла
+  if (( mem_kb >= 4000000 )); then
+    return 0
+  fi
+  if (( swap_kb >= 1200000 )); then
+    tip "Уже достаточно swap (~$(( swap_kb / 1024 )) МиБ) — отдельный swap-файл не создаём."
+    return 0
+  fi
+  if [[ -f "$swapfile" ]]; then
+    if ! swapon --show 2>/dev/null | grep -qF 'swap.nexor'; then
+      swapon "$swapfile" 2>/dev/null || true
+    fi
+    echo -e "  ${G}Готово.${Z} Используем существующий swap: $swapfile"
+    return 0
+  fi
+  avail_m="$(df -Pm /var 2>/dev/null | awk 'NR==2{print $4}')"
+  if [[ -n "$avail_m" ]] && [[ "$avail_m" =~ ^[0-9]+$ ]] && (( avail_m < 2500 )); then
+    die "В /var мало свободного места (~${avail_m} МиБ) — для swap-файла 2 ГиБ нужно ≥ ~2.5 ГиБ свободно. Освободите диск и запустите снова."
+  fi
+  echo -e "  ${Y}→ Мало ОЗУ (~$(( mem_kb / 1024 )) МиБ) и мало swap — создаю 2 ГиБ $swapfile (без него «compile: signal: killed» = OOM).${Z}"
+  ( umask 077
+    fallocate -l 2G "$swapfile" 2>/dev/null || dd if=/dev/zero of="$swapfile" bs=1M count=2048 status=none
+  ) || die "Не удалось выделить $swapfile"
+  chmod 600 "$swapfile"
+  mkswap "$swapfile" >/dev/null || die "mkswap: ошибка"
+  swapon "$swapfile" || die "swapon: ошибка"
+  if ! grep -qF "$swapfile" /etc/fstab 2>/dev/null; then
+    echo "$swapfile none swap sw 0 0" >>/etc/fstab
+  fi
+  echo -e "  ${G}Готово.${Z} swapon; после перезагрузки swap поднимется из /etc/fstab. Сборка Go станет устойчивее к пикам памяти."
 }
 
 # Долгий go build: лог + «пульс» с последней строкой go build -v (видно, какой пакет собирается)
@@ -321,8 +364,9 @@ export GOWORK=off
 export GOMODCACHE="${GOMODCACHE:-$HOME/go/pkg/mod}"
 
 go_apply_host_tuning
+ensure_swap_for_go_build
 if [[ -n "${NEXOR_GO_P:-}" ]]; then
-  tip "Небольшой сервер: GOMAXPROCS=${GOMAXPROCS:-1}, go build -p 1 (ниже пик ОЗУ, дольше по времени, стабильнее на 1 ГБ)."
+  tip "Небольшой сервер: GOMAXPROCS=${GOMAXPROCS:-1}, go build -p 1, GOGC=${GOGC:-} (см. go env) — плюс swap при нехватке ОЗУ."
 fi
 
 echo "--- go build $(date -Iseconds) ---" >>"$INSTALL_LOG"
