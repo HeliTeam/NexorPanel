@@ -14,15 +14,15 @@ PANEL_PORT="2053"
 SUB_PORT="2096"
 NEXOR_USER="${NEXOR_USER:-root}"
 
-# ── оформление (только если TTY) ─────────────────────────────────
+# ── оформление (только если TTY) — $'…' даёт настоящий ESC, не литерал \033 ──
 if [[ -t 1 ]]; then
-  B='\033[1m'
-  D='\033[2m'
-  G='\033[32m'
-  C='\033[36m'
-  Y='\033[33m'
-  R='\033[31m'
-  Z='\033[0m'
+  B=$'\033[1m'
+  D=$'\033[2m'
+  G=$'\033[32m'
+  C=$'\033[36m'
+  Y=$'\033[33m'
+  R=$'\033[31m'
+  Z=$'\033[0m'
 else
   B=D=G=C=Y=R=Z=''
 fi
@@ -72,6 +72,43 @@ run_spinner() {
   wait "$pid"
 }
 
+# dpkg часто занят автообновлением (unattended-upgrades) сразу после первого входа
+dpkg_lock_busy() {
+  if command -v fuser >/dev/null 2>&1; then
+    fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && return 0
+    fuser /var/lib/dpkg/lock >/dev/null 2>&1 && return 0
+  fi
+  pgrep -x apt-get >/dev/null 2>&1 && return 0
+  pgrep -x apt >/dev/null 2>&1 && return 0
+  pgrep -x dpkg >/dev/null 2>&1 && return 0
+  pgrep -f unattended-upgrade >/dev/null 2>&1 && return 0
+  return 1
+}
+
+wait_for_dpkg_lock() {
+  local max="${1:-900}" t=0
+  if ! dpkg_lock_busy; then
+    return 0
+  fi
+  echo -e "  ${D}→ Занят пакетный менеджер (apt/dpkg) — ждём освобождения до $((max / 60)) мин.${Z}"
+  echo "    Часто это фоновое обновление Ubuntu/Debian; ничего не нажимайте в другом apt."
+  while ((t < max)); do
+    if ! dpkg_lock_busy; then
+      sleep 2
+      if ! dpkg_lock_busy; then
+        echo -e "  ${G}Готово.${Z} dpkg свободен, продолжаем."
+        return 0
+      fi
+    fi
+    if ((t % 20 == 0 && t > 0)); then
+      echo "    ... ожидание ${t}s / ${max}s"
+    fi
+    sleep 2
+    t=$((t + 2))
+  done
+  die "Таймаут: apt/dpkg всё ещё заняты. Дождитесь окончания (см. ps aux | grep -E 'apt|dpkg') и запустите скрипт снова."
+}
+
 [[ "$(id -u)" -eq 0 ]] || die "Запустите от root: sudo bash $0"
 
 echo -e "${B}"
@@ -87,8 +124,8 @@ INSTALL_LOG="/tmp/nexor-install.log"
 
 echo ""
 echo -e "${B}Доступ к панели с интернета${Z}"
-echo "  ${G}1${Z} — есть домен → HTTPS через Let's Encrypt (нужен DNS на этот сервер, порт 80)."
-echo "  ${G}2${Z} — только IP → HTTPS с самоподписанным сертификатом (браузер предупредит — это нормально)."
+echo -e "  ${G}1${Z} — есть домен → HTTPS через Let's Encrypt (нужен DNS на этот сервер, порт 80)."
+echo -e "  ${G}2${Z} — только IP → HTTPS с самоподписанным сертификатом (браузер предупредит — это нормально)."
 read -r -p "Выберите 1 или 2: " MODE
 [[ "$MODE" == "1" || "$MODE" == "2" ]] || die "Введите 1 или 2"
 
@@ -120,18 +157,33 @@ export NEEDRESTART_MODE=a 2>/dev/null || true
 phase "Системные пакеты" \
   "Ставим компилятор, SQLite для Go, nginx — это одноразовая загрузка. Дальше быстрее."
 
+wait_for_dpkg_lock
+
 APT_PKGS="git curl ca-certificates openssl build-essential pkg-config libsqlite3-dev nginx"
 [[ "$MODE" == "1" ]] && APT_PKGS="$APT_PKGS certbot python3-certbot-nginx"
 
-{
-  apt-get update -qq
-  # --no-install-recommends ускоряет и уменьшает объём
-  apt-get install -y -qq --no-install-recommends $APT_PKGS
-} >>"$INSTALL_LOG" 2>&1 || {
-  echo -e "${R}apt завершился с ошибкой. Хвост лога:${Z}"
-  tail -30 "$INSTALL_LOG"
-  die "Смотрите полный лог: $INSTALL_LOG"
+run_apt_install() {
+  {
+    apt-get update -qq && apt-get install -y -qq --no-install-recommends $APT_PKGS
+  } >>"$INSTALL_LOG" 2>&1
 }
+
+if ! run_apt_install; then
+  if grep -qE 'Could not get lock|Unable to acquire the dpkg frontend lock' "$INSTALL_LOG" 2>/dev/null; then
+    echo -e "  ${Y}apt снова взял блокировку (гонка) — ждём и повторяем.${Z}"
+    wait_for_dpkg_lock
+    : >"$INSTALL_LOG"
+    run_apt_install || {
+      echo -e "${R}apt завершился с ошибкой. Хвост лога:${Z}"
+      tail -30 "$INSTALL_LOG"
+      die "Смотрите полный лог: $INSTALL_LOG"
+    }
+  else
+    echo -e "${R}apt завершился с ошибкой. Хвост лога:${Z}"
+    tail -30 "$INSTALL_LOG"
+    die "Смотрите полный лог: $INSTALL_LOG"
+  fi
+fi
 echo -e "  ${G}Готово.${Z} Пакеты установлены."
 
 phase "Исходный код Nexor" \
