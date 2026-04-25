@@ -582,6 +582,19 @@ systemctl start nexor
 sleep 2
 systemctl is-active --quiet nexor || die "nexor не активен — journalctl -u nexor -e"
 
+# Чтобы в новых SSH-сессиях находился /usr/local/go/bin/go
+if [[ -d /usr/local/go/bin ]]; then
+  cat >/etc/profile.d/nexor-go.sh <<'EOS'
+# Nexor: Go из /usr/local/go (установщик)
+case ":${PATH}:" in
+  *:/usr/local/go/bin:*) ;;
+  *) export PATH="/usr/local/go/bin:$PATH" ;;
+esac
+EOS
+  chmod 644 /etc/profile.d/nexor-go.sh
+  echo -e "  ${G}Готово.${Z} Для команды go в shell: новый ssh или: source /etc/profile.d/nexor-go.sh"
+fi
+
 echo ""
 echo -e "${G}${B}"
 echo "  ═══════════════════════════════════════════════════════"
@@ -596,4 +609,7 @@ else
 fi
 tip "Логин = ник из create-admin. Команда статуса: systemctl status nexor"
 tip "Лог установки: $INSTALL_LOG"
+if [[ -d /usr/local/src/NexorPanel ]]; then
+  tip "Пересборка после обновлений: bash /usr/local/src/NexorPanel/deploy/rebuild-nexor.sh (на слабом VPS 10–30+ мин, идут строки go build -v; не прерывайте)."
+fi
 echo ""

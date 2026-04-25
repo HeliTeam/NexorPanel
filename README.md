@@ -67,7 +67,15 @@ sudo systemctl enable --now nexor
 
 ## Обновление панели (git pull + сборка)
 
-После автоустановки **Go** лежит в **`/usr/local/go/bin`**, в чистом SSH-сеансе команда `go` может быть «не найдена» — укажите путь к компилятору или `PATH`.
+После автоустановки **Go** в **`/usr/local/go/bin`**: в новом SSH окне выполните `source /etc/profile.d/nexor-go.sh` (файл создаётся установщиком) или откройте новую сессию.
+
+**Рекомендуется** скрипт с выводом пакетов (на **1 vCPU** сборка **10–30+ мин** — не прерывайте, дождитесь `Готово`):
+
+```bash
+cd /usr/local/src/NexorPanel && git pull && bash deploy/rebuild-nexor.sh
+```
+
+Вручную (без прогресс-строк в консоль):
 
 ```bash
 cd /usr/local/src/NexorPanel && git pull && \
@@ -75,7 +83,7 @@ cd /usr/local/src/NexorPanel && git pull && \
   systemctl restart nexor
 ```
 
-Либо один раз: `export PATH="/usr/local/go/bin:$PATH"`, дальше обычный `go build ...`.
+Долго и тихо = компиляция, не «зависание»; для контроля смотрите `tail -f /tmp/nexor-rebuild.log` во втором окне, если не используете `rebuild-nexor.sh`.
 
 ## Переменные окружения
 
