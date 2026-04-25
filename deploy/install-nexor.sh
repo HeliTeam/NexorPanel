@@ -132,6 +132,42 @@ wait_for_dpkg_lock() {
   die "Таймаут: apt/dpkg всё ещё заняты. Дождитесь окончания (см. ps aux | grep -E 'apt|dpkg') и запустите скрипт снова."
 }
 
+# Меньше пиков ОЗУ на слабых VPS: серийная сборка (go build -p 1), GOMAXPROCS=1, чуть чаще GC.
+go_apply_host_tuning() {
+  NEXOR_GO_P=""
+  local mem_kb ncpu
+  mem_kb=99999999
+  [[ -r /proc/meminfo ]] && mem_kb="$(awk '/^MemTotal:/{print $2; exit}' /proc/meminfo)"
+  ncpu="$(nproc 2>/dev/null || echo 1)"
+  if (( ncpu <= 2 )) || (( mem_kb < 2560000 )); then
+    if [[ -z "${GOMAXPROCS:-}" ]]; then
+      export GOMAXPROCS=1
+    fi
+    NEXOR_GO_P=1
+  fi
+  if (( mem_kb < 1600000 )); then
+    if [[ -z "${GOGC:-}" ]]; then
+      export GOGC=45
+    fi
+  fi
+}
+
+# Долгий go build: тихий лог + строки ожидания, чтобы не казалось «зависло»
+run_with_build_heartbeat() {
+  local title="$1" logf="$2" t0 now
+  shift 2
+  t0=$(date +%s)
+  echo -e "  ${D}→ $title (подробности: tail -f $logf)${Z}"
+  "$@" >>"$logf" 2>&1 &
+  local pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 30
+    now=$(date +%s)
+    echo -e "  ${D}... ещё компиляция — $(( (now - t0) / 60 )) мин $(( (now - t0) % 60 )) с. 1 vCPU/1 ГБ: первая сборка часто 5–20 мин, это норма.${Z}"
+  done
+  wait "$pid"
+}
+
 [[ "$(id -u)" -eq 0 ]] || die "Запустите от root: sudo bash $0"
 
 echo -e "${B}"
@@ -219,9 +255,9 @@ phase "Исходный код Nexor" \
 
 export GIT_TERMINAL_PROMPT=0
 if [[ -d "$INSTALL_SRC/.git" ]]; then
-  run_spinner "git fetch / reset…" bash -c "git -C '$INSTALL_SRC' fetch --depth 1 origin '$REPO_BRANCH' && git -C '$INSTALL_SRC' reset --hard 'origin/$REPO_BRANCH'"
+  run_spinner "git fetch / reset…" bash -c "git -C '$INSTALL_SRC' fetch -q --depth 1 origin '$REPO_BRANCH' && git -C '$INSTALL_SRC' reset --hard 'origin/$REPO_BRANCH'"
 else
-  run_spinner "git clone…" git clone --depth 1 --single-branch --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_SRC"
+  run_spinner "git clone…" git clone -q --depth 1 --single-branch --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_SRC"
 fi
 echo -e "  ${G}Готово.${Z} Код в $INSTALL_SRC"
 
@@ -267,7 +303,7 @@ command -v go >/dev/null || die "Go не найден"
 go version | sed 's/^/  /'
 
 phase "Сборка бинарника nexor" \
-  "go mod tidy подтягивает checksums; go build компилирует (обычно 1–3 минуты). Можно заварить чай."
+  "go mod tidy, затем go build. На 1 vCPU/1 ГБ заложите 5–20 мин; прогресс в консоли + tail -f лога (см. подсказку при сборке)."
 
 cd "$INSTALL_SRC"
 export CGO_ENABLED=1
@@ -275,17 +311,29 @@ export GOWORK=off
 # Кэш модулей на диске ускорит повторные установки
 export GOMODCACHE="${GOMODCACHE:-$HOME/go/pkg/mod}"
 
+go_apply_host_tuning
+if [[ -n "${NEXOR_GO_P:-}" ]]; then
+  tip "Небольшой сервер: GOMAXPROCS=${GOMAXPROCS:-1}, go build -p 1 (ниже пик ОЗУ, дольше по времени, стабильнее на 1 ГБ)."
+fi
+
 echo "--- go build $(date -Iseconds) ---" >>"$INSTALL_LOG"
 run_spinner "go mod tidy…" bash -c "go mod tidy >>'$INSTALL_LOG' 2>&1" || {
   echo -e "${R}go mod tidy завершился с ошибкой. Хвост лога:${Z}"
   tail -40 "$INSTALL_LOG"
   die "Полный лог: $INSTALL_LOG"
 }
-run_spinner "go build (1–3 мин)…" bash -c "go build -ldflags '-w -s' -o nexor . >>'$INSTALL_LOG' 2>&1" || {
+
+# -trimpath / -buildvcs=false — меньше лишнего; на слабом хосте -p 1 (ниже пик ОЗУ)
+GB=(go build -trimpath -buildvcs=false -ldflags "-s -w" -o nexor)
+[[ -n "${NEXOR_GO_P:-}" ]] && GB+=(-p 1)
+GB+=(.)
+GB_TITLE="go build"
+[[ -n "${NEXOR_GO_P:-}" ]] && GB_TITLE="go build -p 1"
+if ! run_with_build_heartbeat "$GB_TITLE" "$INSTALL_LOG" "${GB[@]}"; then
   echo -e "${R}Сборка упала. Фрагмент лога:${Z}"
   tail -40 "$INSTALL_LOG"
   die "Полный лог: $INSTALL_LOG"
-}
+fi
 echo -e "  ${G}Готово.${Z} Сборка завершена."
 
 phase "Каталоги и systemd" \
