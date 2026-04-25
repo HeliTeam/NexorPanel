@@ -1,47 +1,93 @@
-[English](/README.md) | [فارسی](/README.fa_IR.md) | [العربية](/README.ar_EG.md) | [中文](/README.zh_CN.md) | [Español](/README.es_ES.md) | [Русский](/README.ru_RU.md)
+[English](README.md) | [Русский](README.ru_RU.md)
 
 <p align="center">
   <img alt="Nexor" src="./media/logo_nexor.png" width="160" height="160">
 </p>
 
-[![License](https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true)](https://www.gnu.org/licenses/gpl-3.0.en.html)
-[![Go Reference](https://pkg.go.dev/badge/github.com/nexor/panel.svg)](https://pkg.go.dev/github.com/nexor/panel)
+# Nexor VPN Panel
 
-**Nexor** — веб-панель для **Xray-core** на базе [3x-ui](https://github.com/MHSanaei/3x-ui): подписки, REST API (JWT и API keys), пути и брендинг Nexor. Сборка из исходников и systemd: [README.md](README.md).
+**Nexor** — веб-панель управления **Xray-core**, форк [3x-ui](https://github.com/MHSanaei/3x-ui). Репозиторий **[HeliTeam/NexorPanel](https://github.com/HeliTeam/NexorPanel)** добавляет собственный слой: пользователи подписок, REST API (`/api`) с JWT и API-ключами, фоновые задачи, опционально PostgreSQL, брендированные пути (`/etc/nexor`, `/var/log/nexor`) и обновлённый интерфейс.
+
+[![License](https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true)](https://www.gnu.org/licenses/gpl-3.0.en.html)
+[![Репозиторий](https://img.shields.io/badge/GitHub-HeliTeam%2FNexorPanel-181717?logo=github)](https://github.com/HeliTeam/NexorPanel)
+[![Go module](https://img.shields.io/badge/module-github.com%2Fnexor%2Fpanel-00ADD8)](https://github.com/HeliTeam/NexorPanel)
 
 > [!IMPORTANT]
-> Только для личного использования; не используйте в незаконных целях и на production без оценки рисков.
+> Используйте только там, где это законно. Панель рассчитана на легальные и разрешённые вам VPN/прокси-операции.
 
-## Быстрый старт (релизы upstream, раскладка x-ui)
+## Возможности
 
+- **Администраторы** — операторы панели; первый админ создаётся командой `create-admin`.
+- **Пользователи подписок** — модель Nexor, связанная с клиентами Xray, учёт трафика и сроков.
+- **REST API** — JWT и обновление токена, API keys, ограничение частоты запросов и защита от перебора на чувствительных маршрутах.
+- **Автоматизация** — периодические задачи (трафик, истечение подписки, неактивность и др.).
+- **База данных** — по умолчанию SQLite; PostgreSQL через DSN (см. комментарий в [`deploy/nexor.service`](deploy/nexor.service)).
+- **Развёртывание** — пример unit-файла **systemd** и фрагменты nginx в каталоге [`deploy/`](deploy/).
+
+**Языки документации:** только **английский** ([README.md](README.md)) и **русский** (этот файл).
+
+## Требования
+
+- **Go** — версия в духе указанной в [`go.mod`](go.mod) (toolchain может подтянуть новый патч).
+- **CGO** — для сборки с SQLite по умолчанию; на Linux нужны компилятор C и заголовки SQLite (`libsqlite3-dev` или аналог).
+- **Права** — в примере сервис запускается от `root`; при необходимости замените пользователя и права на каталоги.
+
+## Быстрый старт (сборка из исходников, Linux)
+
+```bash
+git clone https://github.com/HeliTeam/NexorPanel.git
+cd NexorPanel
+
+# Зависимости (пример Debian/Ubuntu)
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config libsqlite3-dev
+
+export CGO_ENABLED=1
+go build -ldflags "-w -s" -o nexor .
+
+sudo mkdir -p /usr/local/nexor /etc/nexor /var/log/nexor
+sudo cp nexor /usr/local/nexor/
+sudo cp deploy/nexor.service /etc/systemd/system/nexor.service
+sudo systemctl daemon-reload
+
+# Первый администратор (интерактивно) — до или после включения сервиса
+sudo /usr/local/nexor/nexor create-admin
+
+sudo systemctl enable --now nexor
+sudo systemctl status nexor --no-pager
 ```
-bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
-```
 
-Концепты протоколов и Xray: [вики 3x-ui](https://github.com/MHSanaei/3x-ui/wiki). Чистый деплой Nexor — из исходников, см. английский README.
+Откройте панель в браузере: `http://ВАШ_СЕРВЕР:ПОРТ/` (порт задаётся в настройках панели). Откройте этот порт (и порт подписки, если используете отдельный sub-сервер) в файрволе и у облачного провайдера.
+
+Переменные окружения (см. [`deploy/nexor.service`](deploy/nexor.service)):
+
+- `NEXOR_DB_FOLDER` / `XUI_DB_FOLDER` — каталог базы (в примере `/etc/nexor`).
+- `NEXOR_LOG_FOLDER` / `XUI_LOG_FOLDER` — каталог логов (например `/var/log/nexor`).
+- По желанию: `NEXOR_DATABASE_URL` для PostgreSQL.
+
+Готовые **one-click** установщики апстрима рассчитаны на раскладку `x-ui`; для продакшена Nexor используйте собранный бинарник и `nexor.service`.
+
+**Путь модуля Go:** `github.com/nexor/panel`.
+
+## Дополнительно
+
+- Концепции протоколов и Xray (апстрим): [вики 3x-ui](https://github.com/MHSanaei/3x-ui/wiki)
+- Пример обратного прокси: [`deploy/nginx-xray.helitop.ru.conf`](deploy/nginx-xray.helitop.ru.conf)
 
 ## Особая благодарность
 
-- [alireza0](https://github.com/alireza0/)
+- **Seizure** и **Klieer** — огромное спасибо за вклад и поддержку проекта. ♥
+- **[HeliTeam](https://github.com/HeliTeam)** — команда, без которой разработка и выкладка этой панели были бы куда сложнее.
 
-## Благодарности
+Отдельно — признательность апстриму: [alireza0](https://github.com/alireza0/) и участникам [MHSanaei/3x-ui](https://github.com/MHSanaei/3x-ui).
 
-- [Iran v2ray rules](https://github.com/chocolate4u/Iran-v2ray-rules) (Лицензия: **GPL-3.0**): _Улучшенные правила маршрутизации для v2ray/xray и v2ray/xray-clients со встроенными иранскими доменами и фокусом на безопасность и блокировку рекламы._
-- [Russia v2ray rules](https://github.com/runetfreedom/russia-v2ray-rules-dat) (Лицензия: **GPL-3.0**): _Этот репозиторий содержит автоматически обновляемые правила маршрутизации V2Ray на основе данных о заблокированных доменах и адресах в России._
+## Сторонние данные (маршрутизация)
 
-## Поддержка проекта
+- [Iran v2ray rules](https://github.com/chocolate4u/Iran-v2ray-rules) (лицензия **GPL-3.0**)
+- [Russia v2ray rules](https://github.com/runetfreedom/russia-v2ray-rules-dat) (лицензия **GPL-3.0**)
 
-Если проект полезен, поставьте звезду репозиторию.
+## Звёзды со временем
 
-<a href="https://www.buymeacoffee.com/MHSanaei" target="_blank">
-<img src="./media/default-yellow.png" alt="Buy Me A Coffee" style="height: 70px !important;width: 277px !important;" >
-</a>
+[![Stargazers over time](https://starchart.cc/HeliTeam/NexorPanel.svg?variant=adaptive)](https://starchart.cc/HeliTeam/NexorPanel)
 
-</br>
-<a href="https://nowpayments.io/donation/hsanaei" target="_blank" rel="noreferrer noopener">
-   <img src="./media/donation-button-black.svg" alt="Crypto donation button by NOWPayments">
-</a>
-
-## Звезды с течением времени
-
-[![Stargazers over time](https://starchart.cc/nexor/panel.svg?variant=adaptive)](https://starchart.cc/nexor/panel)
+Если Nexor вам полезен, можно поставить звезду репозиторию на GitHub.
