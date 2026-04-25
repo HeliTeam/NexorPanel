@@ -65,6 +65,18 @@ sudo systemctl enable --now nexor
 
 Импорт в Go остаётся по пути модуля: **`github.com/nexor/panel`**.
 
+## Обновление панели (git pull + сборка)
+
+После автоустановки **Go** лежит в **`/usr/local/go/bin`**, в чистом SSH-сеансе команда `go` может быть «не найдена» — укажите путь к компилятору или `PATH`.
+
+```bash
+cd /usr/local/src/NexorPanel && git pull && \
+  CGO_ENABLED=1 GOWORK=off /usr/local/go/bin/go build -ldflags "-w -s" -o /usr/local/nexor/nexor . && \
+  systemctl restart nexor
+```
+
+Либо один раз: `export PATH="/usr/local/go/bin:$PATH"`, дальше обычный `go build ...`.
+
 ## Переменные окружения
 
 | Переменная | Назначение |
