@@ -103,8 +103,9 @@ go version
 
 cd "$INSTALL_SRC"
 export CGO_ENABLED=1
-# Синхронизация go.mod / go.sum (иначе go build может остановиться с «updates to go.mod needed»)
-go mod download
+export GOWORK=off
+# Важно: go mod download ДО tidy часто падает с «updates to go.mod needed» и при set -e скрипт
+# не доходит до tidy. Сначала приводим go.sum в порядок, потом собираем.
 go mod tidy
 go build -ldflags "-w -s" -o nexor .
 
