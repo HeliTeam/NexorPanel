@@ -103,6 +103,9 @@ go version
 
 cd "$INSTALL_SRC"
 export CGO_ENABLED=1
+# Синхронизация go.mod / go.sum (иначе go build может остановиться с «updates to go.mod needed»)
+go mod download
+go mod tidy
 go build -ldflags "-w -s" -o nexor .
 
 install -d -m 0755 "$BIN_DIR" "$DB_DIR" "$LOG_DIR"
